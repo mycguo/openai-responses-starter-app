@@ -116,8 +116,8 @@ async def scrape_website(
                 response.raise_for_status()
                 return {
                     "url": url,
-                    "content": response.text[:50000],  # Limit content size
-                    "note": "Playwright not installed. Install with: pip install playwright && playwright install",
+                    "content": response.text[:20000],  # Limit content size to fit token limits
+                    "note": "Playwright not installed. Install with: pip install playwright && playwright install. Content truncated to fit token limits.",
                     "rendered": False,
                 }
         
@@ -145,18 +145,21 @@ async def scrape_website(
                 
                 # Get the rendered content
                 content = await page.content()
-                
+
                 # Also get visible text (cleaner for reading)
                 visible_text = await page.evaluate("() => document.body.innerText")
-                
+
                 await browser.close()
-                
+
+                # Prioritize text over HTML for better token efficiency
+                # Only include minimal HTML snippet
                 return {
                     "url": url,
-                    "content": content[:100000],  # Limit HTML content size
-                    "text": visible_text[:50000],  # Limit text content size
+                    "content": content[:5000],  # Just a small snippet of HTML for reference
+                    "text": visible_text[:20000],  # Main content - readable text only
                     "rendered": True,
                     "status": "success",
+                    "note": "Full content truncated to fit within token limits. Use 'text' field for clean content.",
                 }
             except Exception as e:
                 await browser.close()

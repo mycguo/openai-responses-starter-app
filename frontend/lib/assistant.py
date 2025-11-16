@@ -95,6 +95,11 @@ def process_messages_streamlit_realtime(response):
                         event_count += 1
                         event_type = data.get('event', 'unknown')
                         print(f"Parsed event #{event_count}: {event_type}")
+
+                        # If it's an unknown event, print the data to see what the error is
+                        if event_type == 'unknown':
+                            print(f"  Unknown event data: {data_str[:500]}")
+
                         try:
                             handle_event(data)
                         except Exception as e:
@@ -180,6 +185,17 @@ def handle_event(data):
     if event == "unknown" or "error" in str(event).lower():
         error_msg = event_data.get("error") or str(event_data)
         print(f"  ⚠️ Error event received: {error_msg}")
+
+        # Show error to user in UI
+        if "error" in str(error_msg).lower():
+            import streamlit as st
+            # Add error message to chat
+            error_display = {
+                "type": "message",
+                "role": "assistant",
+                "content": [{"type": "output_text", "text": f"❌ Error: {error_msg}"}],
+            }
+            st.session_state.chat_messages.append(error_display)
         # Don't return - continue processing in case there are other events
     
     # Handle different event types
