@@ -43,6 +43,10 @@ async def get_tools(tools_state: Dict[str, Any], request: Optional[Any] = None) 
     
     if functions_enabled:
         for tool in tools_list:
+            # Responses API requires all parameters to be in 'required' array
+            # Optional parameters should still be included but can have default values
+            required = list(tool["parameters"].keys())
+            
             tools.append({
                 "type": "function",
                 "name": tool["name"],
@@ -50,7 +54,7 @@ async def get_tools(tools_state: Dict[str, Any], request: Optional[Any] = None) 
                 "parameters": {
                     "type": "object",
                     "properties": tool["parameters"],
-                    "required": list(tool["parameters"].keys()),
+                    "required": required,
                     "additionalProperties": False,
                 },
                 "strict": True,

@@ -23,16 +23,16 @@ def init_session_state():
     
     # Tools state
     if "web_search_enabled" not in st.session_state:
-        st.session_state.web_search_enabled = False
+        st.session_state.web_search_enabled = True  # Enabled by default
     
     if "file_search_enabled" not in st.session_state:
         st.session_state.file_search_enabled = False
     
     if "functions_enabled" not in st.session_state:
-        st.session_state.functions_enabled = True
+        st.session_state.functions_enabled = True  # Enabled by default
     
     if "code_interpreter_enabled" not in st.session_state:
-        st.session_state.code_interpreter_enabled = False
+        st.session_state.code_interpreter_enabled = True  # Enabled by default
     
     if "google_integration_enabled" not in st.session_state:
         st.session_state.google_integration_enabled = False

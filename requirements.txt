@@ -14,3 +14,7 @@ streamlit>=1.28.0
 requests>=2.31.0
 tomli>=2.0.0; python_version < "3.11"  # For reading TOML files in older Python versions
 
+# Browser automation for JavaScript rendering
+playwright>=1.40.0
+# Note: After installing, run 'python -m playwright install chromium' to download browser binaries
+

@@ -19,9 +19,31 @@ class TurnRequest(BaseModel):
 async def generate_stream(messages: List[Dict[str, Any]], tools_state: Dict[str, Any], request: Any):
     """Generate streaming response from OpenAI"""
     tools = await get_tools(tools_state, request)
-    
-    print("Tools:", tools)
-    print("Received messages:", messages)
+
+    # Log tools - Responses API has different structure than Chat Completions
+    tool_names = []
+    for t in tools:
+        tool_type = t.get('type', 'unknown')
+        if tool_type == 'function':
+            tool_names.append(f"function:{t.get('name', 'unknown')}")
+        elif tool_type == 'mcp':
+            tool_names.append(f"mcp:{t.get('server_label', 'unknown')}")
+        else:
+            tool_names.append(tool_type)
+    print(f"Tools ({len(tools)}): {tool_names}")
+    print(f"Received {len(messages)} messages")
+    for i, msg in enumerate(messages):
+        msg_type = msg.get('type', msg.get('role', 'unknown'))
+        if msg_type == 'function_call_output':
+            output = msg.get('output', '')
+            output_preview = output[:100] + '...' if len(output) > 100 else output
+            print(f"  Message {i}: type={msg_type}, call_id={msg.get('call_id', 'N/A')}, output_len={len(output)}, preview={output_preview}")
+        elif msg_type == 'function_call':
+            print(f"  Message {i}: type={msg_type}, call_id={msg.get('call_id', 'N/A')}, name={msg.get('name', 'N/A')}")
+        else:
+            content = str(msg.get('content', ''))
+            content_preview = content[:100] + '...' if len(content) > 100 else content
+            print(f"  Message {i}: type={msg_type}, content_len={len(content)}, preview={content_preview}")
     
     api_key = get_openai_api_key()
     if not api_key:

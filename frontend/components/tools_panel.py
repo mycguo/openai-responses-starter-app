@@ -54,7 +54,7 @@ def render():
         st.session_state.functions_enabled = functions_enabled
         
         if functions_enabled:
-            st.info("Available functions: get_weather, get_joke")
+            st.info("Available functions: get_weather, get_joke, scrape_website (with JavaScript rendering)")
     
     # MCP
     with st.sidebar.expander("🔌 MCP", expanded=False):

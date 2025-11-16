@@ -67,16 +67,15 @@ def process_messages_streamlit_realtime(response):
         # Decode the content
         content = raw_content.decode("utf-8")
         print(f"Received {len(content)} characters of stream data")
-        print(f"First 500 chars: {content[:500]}")
-        
+
         # Split by double newlines (SSE format)
         messages = content.split("\n\n")
         print(f"Found {len(messages)} potential SSE messages")
-        
+
         for msg in messages:
             if not msg.strip():
                 continue
-                
+
             # Look for data lines
             for line in msg.split("\n"):
                 line = line.strip()
@@ -112,13 +111,44 @@ def process_messages_streamlit_realtime(response):
         
         print(f"Stream ended. Processed {event_count} events.")
         print(f"Final chat_messages count: {len(st.session_state.chat_messages)}")
+        for i, msg in enumerate(st.session_state.chat_messages):
+            print(f"  Message {i}: type={msg.get('type')}, role={msg.get('role')}, has_content={bool(msg.get('content'))}")
         
-        # Check if we need to continue after function call
-        if hasattr(st.session_state, 'needs_continuation') and st.session_state.needs_continuation:
+        # Debug: Print conversation_items before continuation check
+        print(f"Final conversation_items count: {len(st.session_state.conversation_items)}")
+        for i, item in enumerate(st.session_state.conversation_items):
+            item_type = item.get("type", "unknown")
+            call_id = item.get("call_id", "N/A")
+            role = item.get("role", "N/A")
+            print(f"  Item {i}: type={item_type}, role={role}, call_id={call_id}")
+        
+        # Verify that all function_calls have matching outputs before continuing
+        incomplete_function_calls = []
+        for item in st.session_state.conversation_items:
+            if item.get("type") == "function_call":
+                call_id = item.get("call_id")
+                # Check if there's a matching function_call_output
+                has_output = any(
+                    output_item.get("type") == "function_call_output" and output_item.get("call_id") == call_id
+                    for output_item in st.session_state.conversation_items
+                )
+                if not has_output:
+                    incomplete_function_calls.append(call_id)
+                    print(f"  WARNING: Function call {call_id} has no output!")
+
+        # Only continue if there are no incomplete function calls
+        needs_cont = hasattr(st.session_state, 'needs_continuation') and st.session_state.needs_continuation
+        print(f"Checking continuation: needs_continuation={needs_cont}, incomplete_calls={len(incomplete_function_calls)}")
+
+        if incomplete_function_calls:
+            print(f"  ⚠️ BLOCKING continuation due to {len(incomplete_function_calls)} incomplete function calls")
+            st.session_state.needs_continuation = False
+        elif needs_cont:
             st.session_state.needs_continuation = False
             # Trigger another API call
             from components.chat import process_messages
             print("Function call completed, making another API request with tool output...")
+            print(f"  Conversation items before continuation: {len(st.session_state.conversation_items)}")
             process_messages()
         
         # If no events were processed, try alternative parsing
@@ -142,11 +172,15 @@ def handle_event(data):
     event = data.get("event")
     event_data = data.get("data", {})
     
-    # Debug: print event type to help diagnose issues
-    if event:
+    # Debug: print event type to help diagnose issues (reduced verbosity)
+    if event and event not in ["response.output_text.delta"]:  # Skip frequent delta events
         print(f"Processing event: {event}")
-        if event_data:
-            print(f"  Event data keys: {list(event_data.keys())[:5]}")
+    
+    # Handle error events
+    if event == "unknown" or "error" in str(event).lower():
+        error_msg = event_data.get("error") or str(event_data)
+        print(f"  ⚠️ Error event received: {error_msg}")
+        # Don't return - continue processing in case there are other events
     
     # Handle different event types
     if event == "response.output_text.delta":
@@ -163,6 +197,11 @@ def handle_event(data):
             import traceback
             traceback.print_exc()
     elif event == "response.output_item.done":
+        print(f"Processing response.output_item.done event")
+        print(f"  Event data keys: {list(event_data.keys())}")
+        if "item" in event_data:
+            item = event_data.get("item", {})
+            print(f"  Item type: {item.get('type')}, Item id: {item.get('id')}")
         handle_output_item_done(event_data)
     elif event == "response.function_call_arguments.delta":
         handle_function_call_arguments_delta(event_data)
@@ -189,12 +228,10 @@ def handle_event(data):
 def handle_output_text_delta(data):
     """Handle output text delta"""
     import streamlit as st
-    
+
     delta = data.get("delta", "")
     item_id = data.get("item_id")
-    
-    print(f"handle_output_text_delta: delta='{delta[:50] if delta else ''}', item_id={item_id}")
-    
+
     if isinstance(delta, str) and delta:
         # Find or create assistant message
         last_msg = None
@@ -209,10 +246,8 @@ def handle_output_text_delta(data):
             if "content" in last_msg and len(last_msg["content"]) > 0:
                 current_text = last_msg["content"][0].get("text", "")
                 last_msg["content"][0]["text"] = current_text + delta
-                print(f"  Updated existing message, new length: {len(current_text + delta)}")
             else:
                 last_msg["content"] = [{"type": "output_text", "text": delta}]
-                print(f"  Added content to existing message")
         else:
             # Create new assistant message
             new_msg = {
@@ -222,7 +257,6 @@ def handle_output_text_delta(data):
                 "content": [{"type": "output_text", "text": delta}],
             }
             st.session_state.chat_messages.append(new_msg)
-            print(f"  Created new assistant message, total messages: {len(st.session_state.chat_messages)}")
 
 
 def handle_annotation_added(data):
@@ -289,6 +323,8 @@ def handle_output_item_added(data):
         })
     
     elif item_type == "function_call":
+        # Add to chat_messages for UI display only
+        # The function_call will be added to conversation_items in handle_output_item_done
         st.session_state.chat_messages.append({
             "type": "tool_call",
             "tool_type": "function_call",
@@ -342,88 +378,160 @@ def handle_output_item_added(data):
 def handle_output_item_done(data):
     """Handle output item done"""
     import streamlit as st
-    import requests
-    from utils.config import get_api_base_url
-    
+
     item = data.get("item", {})
     item_id = item.get("id")
-    
-    # Update tool call with call_id
-    for msg in st.session_state.chat_messages:
-        if msg.get("id") == item_id and msg.get("type") == "tool_call":
-            msg["call_id"] = item.get("call_id")
-            
-            # Handle function call output
-            if msg.get("tool_type") == "function_call":
-                # Execute function and get output
-                function_name = msg.get("name")
-                parsed_args = msg.get("parsedArguments", {})
-                
-                # Call the backend function endpoint
+    item_type = item.get("type")
+
+    print(f"handle_output_item_done: item_id={item_id}, item_type={item_type}")
+
+    # For function calls, this is where we execute them (after we have the correct call_id)
+    if item_type == "function_call":
+        import requests
+        from utils.config import get_api_base_url
+        import json
+
+        call_id = item.get("call_id")
+        function_name = item.get("name")
+        arguments_str = item.get("arguments", "{}")
+
+        print(f"  Function call item done, call_id={call_id}, name={function_name}, item_id={item_id}")
+
+        # Find the tool_call message and update it
+        msg = None
+        for m in st.session_state.chat_messages:
+            if m.get("id") == item_id and m.get("type") == "tool_call":
+                msg = m
+                msg["call_id"] = call_id
+                msg["arguments"] = arguments_str
                 try:
-                    API_BASE_URL = get_api_base_url()
-                    if function_name == "get_weather":
-                        location = parsed_args.get("location", "")
-                        unit = parsed_args.get("unit", "celsius")
-                        response = requests.get(
-                            f"{API_BASE_URL}/api/functions/get_weather",
-                            params={"location": location, "unit": unit},
-                            timeout=10
-                        )
-                        if response.ok:
-                            tool_result = response.json()
-                        else:
-                            tool_result = {"error": f"Function call failed: {response.status_code}"}
-                    elif function_name == "get_joke":
-                        response = requests.get(
-                            f"{API_BASE_URL}/api/functions/get_joke",
-                            timeout=10
-                        )
-                        if response.ok:
-                            tool_result = response.json()
-                        else:
-                            tool_result = {"error": f"Function call failed: {response.status_code}"}
-                    else:
-                        tool_result = {"error": f"Unknown function: {function_name}"}
-                    
-                    # Add tool output to conversation
-                    import json
-                    tool_output_item = {
-                        "type": "function_call_output",
-                        "call_id": item.get("call_id"),
-                        "status": "completed",
-                        "output": json.dumps(tool_result),
+                    msg["parsedArguments"] = json.loads(arguments_str)
+                except:
+                    msg["parsedArguments"] = {}
+                print(f"  Updated tool_call message with call_id={call_id}")
+                break
+
+        if not msg:
+            print(f"  WARNING: Could not find tool_call message with id={item_id}")
+            return
+
+        # Execute the function
+        parsed_args = msg.get("parsedArguments", {})
+        print(f"  Executing function {function_name} with call_id={call_id}")
+
+        try:
+            API_BASE_URL = get_api_base_url()
+            if function_name == "get_weather":
+                location = parsed_args.get("location", "")
+                unit = parsed_args.get("unit", "celsius")
+                response = requests.get(
+                    f"{API_BASE_URL}/api/functions/get_weather",
+                    params={"location": location, "unit": unit},
+                    timeout=10
+                )
+                if response.ok:
+                    tool_result = response.json()
+                else:
+                    tool_result = {"error": f"Function call failed: {response.status_code}", "details": response.text[:200]}
+            elif function_name == "get_joke":
+                response = requests.get(
+                    f"{API_BASE_URL}/api/functions/get_joke",
+                    timeout=10
+                )
+                if response.ok:
+                    tool_result = response.json()
+                else:
+                    tool_result = {"error": f"Function call failed: {response.status_code}", "details": response.text[:200]}
+            elif function_name == "scrape_website":
+                url = parsed_args.get("url", "")
+                wait_for_js = parsed_args.get("wait_for_js")
+                wait_timeout = parsed_args.get("wait_timeout")
+
+                params = {"url": url}
+                if wait_for_js is not None:
+                    params["wait_for_js"] = wait_for_js
+                if wait_timeout is not None:
+                    params["wait_timeout"] = wait_timeout
+
+                timeout_value = (wait_timeout if wait_timeout is not None else 30) + 10
+                print(f"  Calling scrape_website with params: {params}, timeout: {timeout_value}")
+                response = requests.get(
+                    f"{API_BASE_URL}/api/functions/scrape_website",
+                    params=params,
+                    timeout=timeout_value
+                )
+                if response.ok:
+                    tool_result = response.json()
+                else:
+                    error_text = response.text[:500] if response.text else "No error details"
+                    tool_result = {
+                        "error": f"Function call failed: {response.status_code}",
+                        "details": error_text,
+                        "url": url
                     }
-                    st.session_state.conversation_items.append(tool_output_item)
-                    
-                    # Update message with output
-                    msg["status"] = "completed"
-                    msg["output"] = json.dumps(tool_result)
-                    
-                    # Trigger another API call with the tool output
-                    # This will be handled by checking if we need to continue
-                    st.session_state.needs_continuation = True
-                    
-                except Exception as e:
-                    print(f"Error executing function {function_name}: {e}")
-                    import json
-                    tool_output_item = {
-                        "type": "function_call_output",
-                        "call_id": item.get("call_id"),
-                        "status": "completed",
-                        "output": json.dumps({"error": str(e)}),
-                    }
-                    st.session_state.conversation_items.append(tool_output_item)
-                    msg["status"] = "completed"
-                    msg["output"] = json.dumps({"error": str(e)})
-                    st.session_state.needs_continuation = True
-            
-            elif msg.get("tool_type") == "mcp_call":
+                    print(f"  Scrape failed: {response.status_code} - {error_text}")
+            else:
+                tool_result = {"error": f"Unknown function: {function_name}"}
+
+            # Add function_call to conversation_items first
+            st.session_state.conversation_items.append(dict(item))
+            print(f"  Added function_call to conversation_items: call_id={call_id}, name={function_name}")
+
+            # Add function_call_output
+            tool_output_item = {
+                "type": "function_call_output",
+                "call_id": str(call_id),
+                "status": "completed",
+                "output": json.dumps(tool_result),
+            }
+            st.session_state.conversation_items.append(tool_output_item)
+            output_str = json.dumps(tool_result)
+            output_preview = output_str[:100] + '...' if len(output_str) > 100 else output_str
+            print(f"  Added function_call_output: call_id={call_id}, output_len={len(output_str)}, preview={output_preview}")
+
+            # Update message with output
+            msg["status"] = "completed"
+            msg["output"] = json.dumps(tool_result)
+            msg["call_id"] = str(call_id)
+
+            # Trigger continuation
+            st.session_state.needs_continuation = True
+            print(f"  Set needs_continuation=True for function {function_name}")
+
+        except Exception as e:
+            print(f"Error executing function {function_name}: {e}")
+            import traceback
+            traceback.print_exc()
+
+            # Add function_call to conversation_items first
+            st.session_state.conversation_items.append(dict(item))
+            print(f"  Added function_call to conversation_items (error case): call_id={call_id}, name={function_name}")
+
+            tool_output_item = {
+                "type": "function_call_output",
+                "call_id": str(call_id),
+                "status": "completed",
+                "output": json.dumps({"error": str(e)}),
+            }
+            st.session_state.conversation_items.append(tool_output_item)
+            msg["status"] = "completed"
+            msg["output"] = json.dumps({"error": str(e)})
+            msg["call_id"] = str(call_id)
+            st.session_state.needs_continuation = True
+            print(f"  Set needs_continuation=True after error for function {function_name}")
+
+    # For MCP calls, update output if provided
+    elif item_type == "mcp_call":
+        for msg in st.session_state.chat_messages:
+            if msg.get("id") == item_id and msg.get("type") == "tool_call":
                 msg["status"] = "completed"
                 msg["output"] = item.get("output")
-                # MCP calls already have output from the API
-    
-    st.session_state.conversation_items.append(item)
+                break
+        st.session_state.conversation_items.append(item)
+
+    # For other item types, add to conversation_items
+    elif item_type != "function_call":  # function_call is handled above
+        st.session_state.conversation_items.append(item)
 
 
 def handle_function_call_arguments_delta(data):
@@ -441,15 +549,19 @@ def handle_function_call_arguments_delta(data):
 
 
 def handle_function_call_arguments_done(data):
-    """Handle function call arguments done"""
+    """Handle function call arguments done - just update the arguments in the message.
+    Function execution happens in handle_output_item_done where we have the correct call_id."""
+    import streamlit as st
+
     item_id = data.get("item_id")
     final_args = data.get("arguments", "")
-    
+
+    # Find and update the message with final arguments
     for msg in st.session_state.chat_messages:
         if msg.get("id") == item_id and msg.get("type") == "tool_call":
             msg["arguments"] = final_args
             msg["parsedArguments"] = parse_partial_json(final_args)
-            msg["status"] = "completed"
+            break
 
 
 def handle_mcp_call_arguments_delta(data):

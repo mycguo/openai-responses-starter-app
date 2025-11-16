@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Query
 import httpx
+from typing import Optional
 
 router = APIRouter()
 
@@ -86,6 +87,92 @@ async def get_joke():
         from fastapi.responses import JSONResponse
         return JSONResponse(
             content={"error": "Could not fetch joke"},
+            status_code=500
+        )
+
+
+@router.get("/scrape_website")
+async def scrape_website(
+    url: str = Query(..., description="URL to scrape"),
+    wait_for_js: Optional[bool] = Query(None, description="Wait for JavaScript to execute"),
+    wait_timeout: Optional[int] = Query(None, description="Timeout in seconds for page load"),
+):
+    """
+    Scrape a website with optional JavaScript rendering using Playwright.
+    This function can render JavaScript-heavy websites that the basic web_search tool cannot.
+    """
+    try:
+        # Try to import playwright
+        try:
+            from playwright.async_api import async_playwright
+            PLAYWRIGHT_AVAILABLE = True
+        except ImportError:
+            PLAYWRIGHT_AVAILABLE = False
+        
+        if not PLAYWRIGHT_AVAILABLE:
+            # Fallback to basic HTTP request if Playwright not available
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.get(url, follow_redirects=True)
+                response.raise_for_status()
+                return {
+                    "url": url,
+                    "content": response.text[:50000],  # Limit content size
+                    "note": "Playwright not installed. Install with: pip install playwright && playwright install",
+                    "rendered": False,
+                }
+        
+        # Use Playwright for JavaScript rendering
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True)
+            context = await browser.new_context(
+                viewport={"width": 1920, "height": 1080},
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+            )
+            page = await context.new_page()
+            
+            try:
+                # Use defaults if not provided
+                should_wait_for_js = wait_for_js if wait_for_js is not None else False
+                timeout_seconds = wait_timeout if wait_timeout is not None else 30
+                
+                # Navigate to the page
+                await page.goto(url, wait_until="networkidle" if should_wait_for_js else "domcontentloaded", timeout=timeout_seconds * 1000)
+                
+                # Wait for JavaScript if requested
+                if should_wait_for_js:
+                    # Wait a bit for dynamic content to load
+                    await page.wait_for_timeout(2000)
+                
+                # Get the rendered content
+                content = await page.content()
+                
+                # Also get visible text (cleaner for reading)
+                visible_text = await page.evaluate("() => document.body.innerText")
+                
+                await browser.close()
+                
+                return {
+                    "url": url,
+                    "content": content[:100000],  # Limit HTML content size
+                    "text": visible_text[:50000],  # Limit text content size
+                    "rendered": True,
+                    "status": "success",
+                }
+            except Exception as e:
+                await browser.close()
+                raise e
+                
+    except Exception as e:
+        print(f"Error scraping website {url}: {e}")
+        import traceback
+        traceback.print_exc()
+        from fastapi.responses import JSONResponse
+        return JSONResponse(
+            content={
+                "error": str(e),
+                "url": url,
+                "status": "error"
+            },
             status_code=500
         )
 

@@ -67,23 +67,32 @@ def handle_send_message(message: str):
     """Handle sending a message"""
     if not message.strip():
         return
-    
+
     # Add user message to conversation
     user_item = {
         "type": "message",
         "role": "user",
         "content": [{"type": "input_text", "text": message}],
     }
-    
+
     user_message = {
         "role": "user",
         "content": message,
     }
-    
-    st.session_state.conversation_items.append(user_message)
-    st.session_state.chat_messages.append(user_item)
+
+    # Prevent duplicates - check if this exact message was already added
+    last_conversation_item = st.session_state.conversation_items[-1] if st.session_state.conversation_items else None
+    if not (last_conversation_item and
+            last_conversation_item.get("role") == "user" and
+            last_conversation_item.get("content") == message):
+        st.session_state.conversation_items.append(user_message)
+        st.session_state.chat_messages.append(user_item)
+        print(f"Added user message to conversation (total items: {len(st.session_state.conversation_items)})")
+    else:
+        print(f"Skipped duplicate user message")
+
     st.session_state.is_assistant_loading = True
-    
+
     # Process messages
     process_messages()
 
@@ -106,10 +115,79 @@ def process_messages():
             st.session_state.is_assistant_loading = False
             return
         
+        # Filter out incomplete function calls (function_calls without matching outputs)
+        # The Responses API requires that every function_call has a corresponding function_call_output
+        filtered_items = []
+        function_call_call_ids = set()
+        
+        # First pass: collect all function_call call_ids
+        for item in st.session_state.conversation_items:
+            if item.get("type") == "function_call":
+                call_id = item.get("call_id")
+                if call_id:
+                    function_call_call_ids.add(call_id)
+        
+        # Second pass: only include items that are complete
+        for item in st.session_state.conversation_items:
+            item_type = item.get("type")
+            
+            # Always include non-function-call items
+            if item_type != "function_call" and item_type != "function_call_output":
+                filtered_items.append(item)
+            # Include function_call only if it has a matching output
+            elif item_type == "function_call":
+                call_id = item.get("call_id")
+                # Check if there's a matching function_call_output
+                has_output = any(
+                    output_item.get("type") == "function_call_output" and output_item.get("call_id") == call_id
+                    for output_item in st.session_state.conversation_items
+                )
+                if has_output:
+                    filtered_items.append(item)
+                else:
+                    print(f"  ⚠️ Filtering out incomplete function_call: call_id={call_id}")
+            # Include function_call_output only if its function_call is included
+            elif item_type == "function_call_output":
+                call_id = item.get("call_id")
+                if call_id in function_call_call_ids:
+                    # Check if the corresponding function_call is in filtered_items
+                    has_function_call = any(
+                        fc_item.get("type") == "function_call" and fc_item.get("call_id") == call_id
+                        for fc_item in filtered_items
+                    )
+                    if has_function_call:
+                        filtered_items.append(item)
+                    else:
+                        print(f"  ⚠️ Filtering out orphaned function_call_output: call_id={call_id}")
+                else:
+                    print(f"  ⚠️ Filtering out function_call_output with unknown call_id: call_id={call_id}")
+        
+        # Debug: Print filtered conversation items before sending
+        print(f"\nSending {len(filtered_items)} filtered conversation items to API (from {len(st.session_state.conversation_items)} total)")
+        for i, item in enumerate(filtered_items):
+            item_type = item.get("type")
+            if not item_type:
+                # No type means it's a user/assistant message in Responses API format
+                role = item.get("role", "unknown")
+                content_preview = str(item.get("content", ""))[:50]
+                print(f"  Item {i}: role={role}, content={content_preview}...")
+            elif item_type == "function_call":
+                call_id = item.get("call_id", "N/A")
+                name = item.get("name", "N/A")
+                print(f"  Item {i}: type={item_type}, call_id={call_id}, name={name}")
+            elif item_type == "function_call_output":
+                call_id = item.get("call_id", "N/A")
+                output = item.get("output", "")
+                output_len = len(output)
+                print(f"  Item {i}: type={item_type}, call_id={call_id}, output_len={output_len}")
+            else:
+                call_id = item.get("call_id", "N/A")
+                print(f"  Item {i}: type={item_type}, call_id={call_id}")
+        
         response = requests.post(
             f"{API_BASE_URL}/api/turn_response",
             json={
-                "messages": st.session_state.conversation_items,
+                "messages": filtered_items,
                 "toolsState": tools_state,
             },
             stream=True,
