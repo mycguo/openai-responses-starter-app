@@ -43,7 +43,31 @@ def render():
             key="code_interpreter_checkbox",
         )
         st.session_state.code_interpreter_enabled = code_interpreter_enabled
-    
+
+    # Shell
+    with st.sidebar.expander("💻 Shell", expanded=False):
+        shell_enabled = st.checkbox(
+            "Enable Shell",
+            value=st.session_state.shell_enabled,
+            key="shell_checkbox",
+        )
+        st.session_state.shell_enabled = shell_enabled
+
+        if shell_enabled:
+            st.info("Allows the assistant to execute shell commands to help with tasks.")
+
+    # Apply Patch
+    with st.sidebar.expander("📝 Apply Patch", expanded=False):
+        apply_patch_enabled = st.checkbox(
+            "Enable Apply Patch",
+            value=st.session_state.apply_patch_enabled,
+            key="apply_patch_checkbox",
+        )
+        st.session_state.apply_patch_enabled = apply_patch_enabled
+
+        if apply_patch_enabled:
+            st.info("Allows the assistant to apply code patches and diffs to files.")
+
     # Functions
     with st.sidebar.expander("🔧 Functions", expanded=False):
         functions_enabled = st.checkbox(

@@ -304,12 +304,28 @@ def render_tool_call(item):
         
         # Show output if available
         if item.get("output"):
-            st.json(item["output"])
+            # For shell output, show as text/code instead of JSON
+            if tool_type == "shell_call":
+                st.markdown("**Output:**")
+                output_str = item["output"] if isinstance(item["output"], str) else str(item["output"])
+                st.code(output_str, language="text")
+            else:
+                st.json(item["output"])
         
         # Show code for code interpreter
         if tool_type == "code_interpreter_call" and item.get("code"):
             st.code(item["code"], language="python")
-        
+
+        # Show command for shell
+        if tool_type == "shell_call" and item.get("command"):
+            st.markdown("**Command:**")
+            st.code(item["command"], language="bash")
+
+        # Show patch for apply_patch
+        if tool_type == "apply_patch_call" and item.get("patch"):
+            st.markdown("**Patch:**")
+            st.code(item["patch"], language="diff")
+
         # Show files
         if item.get("files"):
             for f in item["files"]:

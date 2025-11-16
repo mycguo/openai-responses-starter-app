@@ -33,7 +33,13 @@ def init_session_state():
     
     if "code_interpreter_enabled" not in st.session_state:
         st.session_state.code_interpreter_enabled = True  # Enabled by default
-    
+
+    if "shell_enabled" not in st.session_state:
+        st.session_state.shell_enabled = True  # Enabled by default
+
+    if "apply_patch_enabled" not in st.session_state:
+        st.session_state.apply_patch_enabled = True  # Enabled by default
+
     if "google_integration_enabled" not in st.session_state:
         st.session_state.google_integration_enabled = False
     
@@ -78,6 +84,8 @@ def get_tools_state():
         "fileSearchEnabled": st.session_state.file_search_enabled,
         "functionsEnabled": st.session_state.functions_enabled,
         "codeInterpreterEnabled": st.session_state.code_interpreter_enabled,
+        "shellEnabled": st.session_state.shell_enabled,
+        "applyPatchEnabled": st.session_state.apply_patch_enabled,
         "vectorStore": st.session_state.vector_store or {},
         "webSearchConfig": st.session_state.web_search_config,
         "mcpEnabled": st.session_state.mcp_enabled,

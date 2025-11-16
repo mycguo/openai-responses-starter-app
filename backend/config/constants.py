@@ -1,6 +1,6 @@
 from datetime import datetime
 
-MODEL = "gpt-4.1"
+MODEL = "gpt-5.1"
 
 # Developer prompt for the assistant
 DEVELOPER_PROMPT = """

@@ -12,12 +12,14 @@ async def get_tools(tools_state: Dict[str, Any], request: Optional[Any] = None) 
     file_search_enabled = tools_state.get("fileSearchEnabled", False)
     functions_enabled = tools_state.get("functionsEnabled", False)
     code_interpreter_enabled = tools_state.get("codeInterpreterEnabled", False)
+    shell_enabled = tools_state.get("shellEnabled", True)  # Enabled by default
+    apply_patch_enabled = tools_state.get("applyPatchEnabled", True)  # Enabled by default
     vector_store = tools_state.get("vectorStore")
     web_search_config = tools_state.get("webSearchConfig", {})
     mcp_enabled = tools_state.get("mcpEnabled", False)
     mcp_config = tools_state.get("mcpConfig", {})
     google_integration_enabled = tools_state.get("googleIntegrationEnabled", False)
-    
+
     tools = []
     
     if web_search_enabled:
@@ -40,7 +42,13 @@ async def get_tools(tools_state: Dict[str, Any], request: Optional[Any] = None) 
     
     if code_interpreter_enabled:
         tools.append({"type": "code_interpreter", "container": {"type": "auto"}})
-    
+
+    if shell_enabled:
+        tools.append({"type": "shell"})
+
+    if apply_patch_enabled:
+        tools.append({"type": "apply_patch"})
+
     if functions_enabled:
         for tool in tools_list:
             # Responses API requires all parameters to be in 'required' array

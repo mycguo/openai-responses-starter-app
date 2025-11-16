@@ -237,6 +237,20 @@ def handle_event(data):
         handle_code_interpreter_code_done(event_data)
     elif event == "response.code_interpreter_call.completed":
         handle_code_interpreter_completed(event_data)
+    elif event == "response.shell_call_command.added":
+        handle_shell_call_command_added(event_data)
+    elif event == "response.shell_call_command.delta":
+        handle_shell_call_command_delta(event_data)
+    elif event == "response.shell_call_command.done":
+        handle_shell_call_command_done(event_data)
+    elif event == "response.shell_call_output.delta":
+        handle_shell_call_output_delta(event_data)
+    elif event == "response.shell_call_output.done":
+        handle_shell_call_output_done(event_data)
+    elif event == "response.shell_call.completed":
+        handle_shell_call_completed(event_data)
+    elif event == "response.apply_patch_call.completed":
+        handle_apply_patch_call_completed(event_data)
     elif event == "response.completed":
         handle_response_completed(event_data)
 
@@ -388,6 +402,26 @@ def handle_output_item_added(data):
             "id": item.get("id"),
             "code": "",
             "files": [],
+        })
+
+    elif item_type == "shell_call":
+        st.session_state.chat_messages.append({
+            "type": "tool_call",
+            "tool_type": "shell_call",
+            "status": item.get("status", "in_progress"),
+            "id": item.get("id"),
+            "command": item.get("command", ""),
+            "output": None,
+        })
+
+    elif item_type == "apply_patch_call":
+        st.session_state.chat_messages.append({
+            "type": "tool_call",
+            "tool_type": "apply_patch_call",
+            "status": item.get("status", "in_progress"),
+            "id": item.get("id"),
+            "patch": item.get("patch", ""),
+            "output": None,
         })
 
 
@@ -545,6 +579,45 @@ def handle_output_item_done(data):
                 break
         st.session_state.conversation_items.append(item)
 
+    # For shell calls, add to conversation and trigger continuation to get output
+    elif item_type == "shell_call":
+        print(f"  Shell call item status: {item.get('status')}")
+        print(f"  Shell call command: {item.get('action', {}).get('commands')}")
+
+        # Update UI message
+        for msg in st.session_state.chat_messages:
+            if msg.get("id") == item_id and msg.get("type") == "tool_call":
+                command = item.get("action", {}).get("commands", [])
+                if command:
+                    msg["command"] = command[0] if isinstance(command, list) else command
+                # Mark as completed - shell has executed, we'll get output in continuation
+                msg["status"] = "completed"
+                break
+
+        # Clean the shell_call item - remove fields that OpenAI doesn't accept in input
+        clean_item = dict(item)
+        if "created_by" in clean_item:
+            del clean_item["created_by"]
+
+        # Add shell_call to conversation_items
+        st.session_state.conversation_items.append(clean_item)
+        print(f"  Added shell_call to conversation_items (cleaned)")
+
+        # Trigger continuation to get the shell output
+        st.session_state.needs_continuation = True
+        print(f"  Set needs_continuation=True to fetch shell output")
+
+    # For apply_patch calls, update output if provided
+    elif item_type == "apply_patch_call":
+        for msg in st.session_state.chat_messages:
+            if msg.get("id") == item_id and msg.get("type") == "tool_call":
+                msg["status"] = "completed"
+                output = item.get("output")
+                if output:
+                    msg["output"] = output
+                break
+        st.session_state.conversation_items.append(item)
+
     # For other item types, add to conversation_items
     elif item_type != "function_call":  # function_call is handled above
         st.session_state.conversation_items.append(item)
@@ -688,6 +761,104 @@ def handle_response_completed(data):
                 "name": item.get("name"),
                 "arguments": item.get("arguments"),
             })
+
+
+def handle_shell_call_command_added(data):
+    """Handle shell call command added"""
+    # Command will be built up in delta events
+    pass
+
+
+def handle_shell_call_command_delta(data):
+    """Handle shell call command delta"""
+    import streamlit as st
+    delta = data.get("delta", "")
+    item_id = data.get("item_id")
+
+    for msg in reversed(st.session_state.chat_messages):
+        if (msg.get("type") == "tool_call" and
+            msg.get("tool_type") == "shell_call" and
+            msg.get("id") == item_id and
+            msg.get("status") != "completed"):
+            msg["command"] = msg.get("command", "") + delta
+            break
+
+
+def handle_shell_call_command_done(data):
+    """Handle shell call command done"""
+    import streamlit as st
+    command = data.get("command", "")
+    item_id = data.get("item_id")
+
+    for msg in reversed(st.session_state.chat_messages):
+        if (msg.get("type") == "tool_call" and
+            msg.get("tool_type") == "shell_call" and
+            msg.get("id") == item_id):
+            msg["command"] = command
+            break
+
+
+def handle_shell_call_output_delta(data):
+    """Handle shell call output delta"""
+    import streamlit as st
+
+    delta = data.get("delta", "")
+    item_id = data.get("item_id")
+
+    # Find the shell_call message and append output
+    for msg in reversed(st.session_state.chat_messages):
+        if (msg.get("type") == "tool_call" and
+            msg.get("tool_type") == "shell_call" and
+            msg.get("id") == item_id):
+            current_output = msg.get("output", "")
+            msg["output"] = current_output + delta
+            break
+
+
+def handle_shell_call_output_done(data):
+    """Handle shell call output done"""
+    import streamlit as st
+
+    output = data.get("output", "")
+    item_id = data.get("item_id")
+
+    for msg in st.session_state.chat_messages:
+        if msg.get("id") == item_id and msg.get("type") == "tool_call":
+            msg["output"] = output
+            msg["status"] = "completed"
+            break
+
+
+def handle_shell_call_completed(data):
+    """Handle shell call completed"""
+    import streamlit as st
+
+    print(f"handle_shell_call_completed called with data: {data}")
+
+    item_id = data.get("item_id")
+    output = data.get("output")
+
+    print(f"  item_id={item_id}, has output: {bool(output)}")
+    if output:
+        print(f"  Output type: {type(output)}, preview: {str(output)[:200]}")
+
+    for msg in st.session_state.chat_messages:
+        if msg.get("id") == item_id and msg.get("type") == "tool_call":
+            msg["status"] = "completed"
+            if output:
+                msg["output"] = output
+                print(f"  Updated shell message with output")
+
+
+def handle_apply_patch_call_completed(data):
+    """Handle apply patch call completed"""
+    item_id = data.get("item_id")
+    output = data.get("output")
+
+    for msg in st.session_state.chat_messages:
+        if msg.get("id") == item_id and msg.get("type") == "tool_call":
+            msg["status"] = "completed"
+            msg["output"] = output
 
 
 def normalize_annotation(annotation):

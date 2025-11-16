@@ -28,6 +28,8 @@ async def generate_stream(messages: List[Dict[str, Any]], tools_state: Dict[str,
             tool_names.append(f"function:{t.get('name', 'unknown')}")
         elif tool_type == 'mcp':
             tool_names.append(f"mcp:{t.get('server_label', 'unknown')}")
+        elif tool_type in ['shell', 'apply_patch', 'web_search', 'file_search', 'code_interpreter']:
+            tool_names.append(tool_type)
         else:
             tool_names.append(tool_type)
     print(f"Tools ({len(tools)}): {tool_names}")
@@ -40,6 +42,9 @@ async def generate_stream(messages: List[Dict[str, Any]], tools_state: Dict[str,
             print(f"  Message {i}: type={msg_type}, call_id={msg.get('call_id', 'N/A')}, output_len={len(output)}, preview={output_preview}")
         elif msg_type == 'function_call':
             print(f"  Message {i}: type={msg_type}, call_id={msg.get('call_id', 'N/A')}, name={msg.get('name', 'N/A')}")
+        elif msg_type == 'shell_call':
+            print(f"  Message {i}: type={msg_type}")
+            print(f"     Full shell_call: {json.dumps(msg, indent=2)}")
         else:
             content = str(msg.get('content', ''))
             content_preview = content[:100] + '...' if len(content) > 100 else content
@@ -80,7 +85,14 @@ async def generate_stream(messages: List[Dict[str, Any]], tools_state: Dict[str,
             # Convert event to dict
             event_dict = event.model_dump() if hasattr(event, 'model_dump') else dict(event)
             event_type = event_dict.get("type", getattr(event, "type", "unknown"))
-            
+
+            # Log shell-related events
+            if "shell" in event_type.lower():
+                print(f"  🐚 Shell event: {event_type}")
+                if event_type == "response.output_item.done":
+                    item = event_dict.get("item", {})
+                    print(f"     Item type: {item.get('type')}, has output: {bool(item.get('output'))}")
+
             data = json.dumps({
                 "event": event_type,
                 "data": event_dict,
