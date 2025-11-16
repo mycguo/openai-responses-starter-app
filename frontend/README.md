@@ -7,7 +7,11 @@ This is the Streamlit frontend for the OpenAI Responses Starter App.
 1. **Install dependencies:**
 
 ```bash
+# Install from root directory (includes both backend and frontend)
 pip install -r requirements.txt
+
+# Or install only frontend dependencies
+pip install -r frontend/requirements.txt
 ```
 
 2. **Set API keys and configuration:**

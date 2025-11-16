@@ -36,8 +36,7 @@ Before running the start script, make sure you have:
 
 1. **Installed dependencies:**
    ```bash
-   pip install -r backend/requirements.txt
-   pip install -r frontend/requirements.txt
+   pip install -r requirements.txt
    ```
 
 2. **Configured API keys:**
@@ -121,8 +120,7 @@ Press **Ctrl+C** in the terminal where you ran the script. Both servers will sto
 
 Install dependencies:
 ```bash
-pip install -r backend/requirements.txt
-pip install -r frontend/requirements.txt
+pip install -r requirements.txt
 ```
 
 ### Port already in use

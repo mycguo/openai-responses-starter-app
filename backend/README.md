@@ -7,7 +7,11 @@ This is the Python FastAPI backend for the OpenAI Responses Starter App.
 1. **Install dependencies:**
 
 ```bash
+# Install from root directory (includes both backend and frontend)
 pip install -r requirements.txt
+
+# Or install only backend dependencies
+pip install -r backend/requirements.txt
 ```
 
 2. **Set API keys:**

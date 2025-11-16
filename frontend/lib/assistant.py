@@ -21,7 +21,7 @@ def parse_partial_json(json_str):
 
 
 def process_messages_streamlit(response):
-    """Process streaming messages from API response"""
+    """Process streaming messages from API response (non-realtime version)"""
     buffer = ""
     
     for line in response.iter_lines():
@@ -46,17 +46,114 @@ def process_messages_streamlit(response):
                         continue
 
 
+def process_messages_streamlit_realtime(response):
+    """Process streaming messages from API response"""
+    import streamlit as st
+    
+    # Process all events first, then rerun once at the end
+    # Streamlit doesn't support true real-time updates during blocking operations
+    buffer = ""
+    event_count = 0
+    
+    print("Starting to process stream...")
+    
+    try:
+        # Read the stream content
+        raw_content = b""
+        for chunk in response.iter_content(chunk_size=8192):
+            if chunk:
+                raw_content += chunk
+        
+        # Decode the content
+        content = raw_content.decode("utf-8")
+        print(f"Received {len(content)} characters of stream data")
+        print(f"First 500 chars: {content[:500]}")
+        
+        # Split by double newlines (SSE format)
+        messages = content.split("\n\n")
+        print(f"Found {len(messages)} potential SSE messages")
+        
+        for msg in messages:
+            if not msg.strip():
+                continue
+                
+            # Look for data lines
+            for line in msg.split("\n"):
+                line = line.strip()
+                if line.startswith("data: "):
+                    data_str = line[6:].strip()
+                    
+                    if data_str == "[DONE]":
+                        print(f"Stream complete. Processed {event_count} events.")
+                        print(f"Final chat_messages count: {len(st.session_state.chat_messages)}")
+                        return
+                    
+                    if not data_str:
+                        continue
+                    
+                    try:
+                        data = json.loads(data_str)
+                        event_count += 1
+                        event_type = data.get('event', 'unknown')
+                        print(f"Parsed event #{event_count}: {event_type}")
+                        try:
+                            handle_event(data)
+                        except Exception as e:
+                            print(f"Error handling event {event_type}: {e}")
+                            import traceback
+                            traceback.print_exc()
+                            # Continue processing other events
+                            continue
+                    except json.JSONDecodeError as e:
+                        # Log the error for debugging
+                        print(f"JSON decode error: {e}")
+                        print(f"  Data: {data_str[:200]}")
+                        continue
+        
+        print(f"Stream ended. Processed {event_count} events.")
+        print(f"Final chat_messages count: {len(st.session_state.chat_messages)}")
+        
+        # If no events were processed, try alternative parsing
+        if event_count == 0:
+            print("No events found with standard SSE parsing. Trying alternative...")
+            # Try parsing the entire content as JSON
+            try:
+                data = json.loads(content)
+                print(f"Parsed as single JSON: {type(data)}")
+            except:
+                pass
+        
+    except Exception as e:
+        print(f"Error processing stream: {e}")
+        import traceback
+        traceback.print_exc()
+
+
 def handle_event(data):
     """Handle a single event from the stream"""
     event = data.get("event")
     event_data = data.get("data", {})
     
+    # Debug: print event type to help diagnose issues
+    if event:
+        print(f"Processing event: {event}")
+        if event_data:
+            print(f"  Event data keys: {list(event_data.keys())[:5]}")
+    
+    # Handle different event types
     if event == "response.output_text.delta":
         handle_output_text_delta(event_data)
     elif event == "response.output_text.annotation.added":
         handle_annotation_added(event_data)
     elif event == "response.output_item.added":
-        handle_output_item_added(event_data)
+        # This might also contain text content
+        try:
+            handle_output_item_added(event_data)
+        except Exception as e:
+            print(f"Error handling output_item.added: {e}")
+            print(f"  Event data: {event_data}")
+            import traceback
+            traceback.print_exc()
     elif event == "response.output_item.done":
         handle_output_item_done(event_data)
     elif event == "response.function_call_arguments.delta":
@@ -83,29 +180,41 @@ def handle_event(data):
 
 def handle_output_text_delta(data):
     """Handle output text delta"""
+    import streamlit as st
+    
     delta = data.get("delta", "")
     item_id = data.get("item_id")
     
-    if isinstance(delta, str):
+    print(f"handle_output_text_delta: delta='{delta[:50] if delta else ''}', item_id={item_id}")
+    
+    if isinstance(delta, str) and delta:
         # Find or create assistant message
         last_msg = None
         for msg in reversed(st.session_state.chat_messages):
             if msg.get("type") == "message" and msg.get("role") == "assistant":
-                if not msg.get("id") or msg.get("id") == item_id:
+                # Match by item_id if provided, otherwise use the last assistant message
+                if not item_id or msg.get("id") == item_id or not msg.get("id"):
                     last_msg = msg
                     break
         
         if last_msg:
             if "content" in last_msg and len(last_msg["content"]) > 0:
-                last_msg["content"][0]["text"] = last_msg["content"][0].get("text", "") + delta
+                current_text = last_msg["content"][0].get("text", "")
+                last_msg["content"][0]["text"] = current_text + delta
+                print(f"  Updated existing message, new length: {len(current_text + delta)}")
+            else:
+                last_msg["content"] = [{"type": "output_text", "text": delta}]
+                print(f"  Added content to existing message")
         else:
             # Create new assistant message
-            st.session_state.chat_messages.append({
+            new_msg = {
                 "type": "message",
                 "role": "assistant",
                 "id": item_id,
                 "content": [{"type": "output_text", "text": delta}],
-            })
+            }
+            st.session_state.chat_messages.append(new_msg)
+            print(f"  Created new assistant message, total messages: {len(st.session_state.chat_messages)}")
 
 
 def handle_annotation_added(data):
@@ -125,14 +234,38 @@ def handle_annotation_added(data):
 def handle_output_item_added(data):
     """Handle output item added"""
     item = data.get("item", {})
-    if not item or not item.get("type"):
+    if not item:
+        return
+    
+    # Handle case where item might be a list or dict
+    if isinstance(item, list):
+        # If item is a list, process the first element or return
+        if len(item) == 0:
+            return
+        item = item[0]
+    
+    if not isinstance(item, dict) or not item.get("type"):
         return
     
     item_type = item.get("type")
     
     if item_type == "message":
-        text = item.get("content", {}).get("text", "")
-        annotations = item.get("content", {}).get("annotations", [])
+        # Handle content - it might be a dict or a list
+        content = item.get("content", {})
+        if isinstance(content, list):
+            # If content is a list, get the first element
+            if len(content) > 0 and isinstance(content[0], dict):
+                text = content[0].get("text", "")
+                annotations = content[0].get("annotations", [])
+            else:
+                text = ""
+                annotations = []
+        elif isinstance(content, dict):
+            text = content.get("text", "")
+            annotations = content.get("annotations", [])
+        else:
+            text = str(content) if content else ""
+            annotations = []
         st.session_state.chat_messages.append({
             "type": "message",
             "role": "assistant",

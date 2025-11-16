@@ -32,18 +32,18 @@ def render():
             st.rerun()
     
     # Chat messages container
-    chat_container = st.container()
-    
-    with chat_container:
-        # Display chat messages
+    # Display chat messages
+    if st.session_state.chat_messages:
         for idx, item in enumerate(st.session_state.chat_messages):
             render_message_item(item, idx)
-        
-        # Loading indicator
-        if st.session_state.is_assistant_loading:
-            with st.chat_message("assistant"):
-                with st.spinner("Assistant is thinking..."):
-                    st.empty()
+    else:
+        st.info("No messages yet. Start a conversation!")
+    
+    # Loading indicator
+    if st.session_state.is_assistant_loading:
+        with st.chat_message("assistant"):
+            with st.spinner("Assistant is thinking..."):
+                st.empty()
     
     # Input area
     st.markdown("---")
@@ -93,6 +93,19 @@ def process_messages():
     tools_state = get_tools_state()
     
     try:
+        # Check if backend is available first
+        try:
+            health_check = requests.get(f"{API_BASE_URL}/health", timeout=2)
+            if health_check.status_code != 200:
+                st.error("Backend server is not responding. Please ensure the backend is running on port 8000.")
+                st.session_state.is_assistant_loading = False
+                return
+        except requests.exceptions.RequestException:
+            st.error(f"❌ Cannot connect to backend at {API_BASE_URL}. Please ensure the backend is running.")
+            st.info("💡 Start the backend with: `cd backend && uvicorn main:app --reload --port 8000`")
+            st.session_state.is_assistant_loading = False
+            return
+        
         response = requests.post(
             f"{API_BASE_URL}/api/turn_response",
             json={
@@ -101,19 +114,33 @@ def process_messages():
             },
             stream=True,
             headers={"Content-Type": "application/json"},
+            timeout=30,
         )
         
         if not response.ok:
-            st.error(f"Error: {response.status_code}")
+            st.error(f"Error: {response.status_code} - {response.text}")
             st.session_state.is_assistant_loading = False
             return
         
         # Process streaming response
-        from lib.assistant import process_messages_streamlit
-        process_messages_streamlit(response)
+        from lib.assistant import process_messages_streamlit_realtime
+        process_messages_streamlit_realtime(response)
         st.session_state.is_assistant_loading = False
-        st.rerun()
         
+        # Debug: Print message count
+        print(f"After processing: {len(st.session_state.chat_messages)} messages in chat_messages")
+        for i, msg in enumerate(st.session_state.chat_messages):
+            print(f"  Message {i}: type={msg.get('type')}, role={msg.get('role')}, has_content={bool(msg.get('content'))}")
+        
+        st.rerun()  # Ensure UI updates after processing
+        
+    except requests.exceptions.Timeout:
+        st.error("Request timed out. The backend may be slow or unresponsive.")
+        st.session_state.is_assistant_loading = False
+    except requests.exceptions.ConnectionError:
+        st.error(f"❌ Cannot connect to backend at {API_BASE_URL}")
+        st.info("💡 Make sure the backend is running: `cd backend && uvicorn main:app --reload --port 8000`")
+        st.session_state.is_assistant_loading = False
     except Exception as e:
         st.error(f"Error processing message: {str(e)}")
         st.session_state.is_assistant_loading = False
@@ -121,31 +148,64 @@ def process_messages():
 
 def render_message_item(item, idx):
     """Render a single message item"""
-    if item["type"] == "message":
+    item_type = item.get("type", "unknown")
+    
+    if item_type == "message":
         render_message(item)
-    elif item["type"] == "tool_call":
+    elif item_type == "tool_call":
         render_tool_call(item)
-    elif item["type"] == "mcp_list_tools":
+    elif item_type == "mcp_list_tools":
         render_mcp_tools_list(item)
-    elif item["type"] == "mcp_approval_request":
+    elif item_type == "mcp_approval_request":
         render_mcp_approval(item, idx)
+    else:
+        # Debug: show unknown item types
+        st.warning(f"Unknown item type: {item_type}")
+        st.json(item)
 
 
 def render_message(item):
     """Render a message"""
-    role = item["role"]
-    content = item["content"][0]["text"] if item["content"] else ""
+    role = item.get("role", "assistant")
+    
+    # Safely get content
+    content_text = ""
+    annotations = []
+    
+    if item.get("content"):
+        if isinstance(item["content"], list) and len(item["content"]) > 0:
+            # Content is a list
+            first_content = item["content"][0]
+            if isinstance(first_content, dict):
+                content_text = first_content.get("text", "")
+                annotations = first_content.get("annotations", [])
+            elif isinstance(first_content, str):
+                content_text = first_content
+        elif isinstance(item["content"], str):
+            # Content is a string
+            content_text = item["content"]
+        elif isinstance(item["content"], dict):
+            # Content is a dict
+            content_text = item["content"].get("text", "")
+            annotations = item["content"].get("annotations", [])
+    
+    # Debug: print if content is empty
+    if not content_text and role == "assistant":
+        print(f"Warning: Assistant message has no content. Item: {item}")
     
     if role == "user":
         with st.chat_message("user"):
-            st.markdown(content)
+            st.markdown(content_text if content_text else "(empty message)")
     else:
         with st.chat_message("assistant"):
-            st.markdown(content)
+            if content_text:
+                st.markdown(content_text)
+            else:
+                st.info("Waiting for response...")
             
             # Render annotations if present
-            if item["content"] and item["content"][0].get("annotations"):
-                render_annotations(item["content"][0]["annotations"])
+            if annotations:
+                render_annotations(annotations)
 
 
 def render_tool_call(item):

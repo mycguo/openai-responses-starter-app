@@ -1,4 +1,5 @@
 """Session state management for Streamlit app"""
+import streamlit as st
 from config.constants import INITIAL_MESSAGE, default_vector_store
 
 

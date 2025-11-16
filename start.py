@@ -10,6 +10,11 @@ import time
 import signal
 from pathlib import Path
 
+try:
+    import requests
+except ImportError:
+    requests = None
+
 # Colors for terminal output
 class Colors:
     GREEN = '\033[92m'
@@ -23,6 +28,25 @@ def print_colored(message, color=Colors.END):
     """Print colored message"""
     print(f"{color}{message}{Colors.END}")
 
+def wait_for_backend(url, max_attempts=30, delay=1):
+    """Wait for backend to be ready"""
+    if requests is None:
+        # If requests is not available, just wait a fixed time
+        print_colored("  (requests not available, waiting 5 seconds...)", Colors.YELLOW)
+        time.sleep(5)
+        return True
+    
+    for i in range(max_attempts):
+        try:
+            response = requests.get(url, timeout=2)
+            if response.status_code == 200:
+                return True
+        except (requests.exceptions.RequestException, requests.exceptions.ConnectionError):
+            if i % 5 == 0:  # Print progress every 5 attempts
+                print_colored(f"  Waiting... ({i+1}/{max_attempts})", Colors.YELLOW)
+        time.sleep(delay)
+    return False
+
 def check_dependencies():
     """Check if required dependencies are installed"""
     print_colored("Checking dependencies...", Colors.BLUE)
@@ -35,29 +59,9 @@ def check_dependencies():
     except ImportError as e:
         print_colored(f"✗ Missing dependency: {e}", Colors.RED)
         print_colored("Please install dependencies:", Colors.YELLOW)
-        print_colored("  pip install -r backend/requirements.txt", Colors.YELLOW)
-        print_colored("  pip install -r frontend/requirements.txt", Colors.YELLOW)
+        print_colored("  pip install -r requirements.txt", Colors.YELLOW)
         return False
 
-def check_api_key():
-    """Check if API key is configured"""
-    print_colored("Checking API key configuration...", Colors.BLUE)
-    
-    # Check Streamlit secrets
-    secrets_file = Path(".streamlit/secrets.toml")
-    if secrets_file.exists():
-        print_colored("✓ Found Streamlit secrets file", Colors.GREEN)
-        return True
-    
-    # Check environment variable
-    if os.getenv("OPENAI_API_KEY"):
-        print_colored("✓ Found OPENAI_API_KEY in environment", Colors.GREEN)
-        return True
-    
-    print_colored("⚠ No API key found in secrets or environment", Colors.YELLOW)
-    print_colored("  The app may not work without OPENAI_API_KEY", Colors.YELLOW)
-    print_colored("  Create .streamlit/secrets.toml or set OPENAI_API_KEY environment variable", Colors.YELLOW)
-    return False
 
 def start_backend():
     """Start the FastAPI backend server"""
@@ -74,12 +78,10 @@ def start_backend():
     os.chdir(backend_dir)
     
     # Start uvicorn server
+    # Don't capture output so errors are visible in terminal
     process = subprocess.Popen(
         [sys.executable, "-m", "uvicorn", "main:app", "--reload", "--port", "8000"],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        universal_newlines=True,
-        bufsize=1
+        # stdout and stderr go to terminal for visibility
     )
     
     # Go back to project root
@@ -102,12 +104,10 @@ def start_frontend():
     os.chdir(frontend_dir)
     
     # Start streamlit server
+    # Don't capture output so errors are visible in terminal
     process = subprocess.Popen(
         [sys.executable, "-m", "streamlit", "run", "app.py", "--server.port", "8501"],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        universal_newlines=True,
-        bufsize=1
+        # stdout and stderr go to terminal for visibility
     )
     
     # Go back to project root
@@ -131,8 +131,6 @@ def main():
     if not check_dependencies():
         sys.exit(1)
     
-    # Check API key (warning only)
-    check_api_key()
     
     processes = []
     
@@ -142,7 +140,24 @@ def main():
         if backend_process:
             processes.append(("Backend", backend_process, Colors.BLUE))
             print_colored("✓ Backend starting on http://localhost:8000", Colors.GREEN)
-            time.sleep(2)  # Give backend time to start
+            
+            # Give backend a moment to start
+            time.sleep(1)
+            
+            # Wait for backend to be ready
+            print_colored("Waiting for backend to be ready...", Colors.BLUE)
+            backend_ready = wait_for_backend("http://localhost:8000/health", max_attempts=30)
+            if backend_ready:
+                print_colored("✓ Backend is ready", Colors.GREEN)
+            else:
+                print_colored("⚠ Backend may not be ready yet - check for errors above", Colors.YELLOW)
+                # Check if process is still running
+                if backend_process.poll() is not None:
+                    print_colored("✗ Backend process exited! Check errors above.", Colors.RED)
+                    print_colored("  Common issues:", Colors.YELLOW)
+                    print_colored("  - Missing dependencies: pip install -r requirements.txt", Colors.YELLOW)
+                    print_colored("  - Missing API key: Set OPENAI_API_KEY in .streamlit/secrets.toml or environment", Colors.YELLOW)
+                    print_colored("  - Port 8000 already in use", Colors.YELLOW)
         
         # Start frontend
         frontend_process = start_frontend()

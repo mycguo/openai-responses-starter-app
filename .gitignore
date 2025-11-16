@@ -38,6 +38,12 @@ yarn-error.log*
 .streamlit/secrets.toml
 !.streamlit/secrets.toml.example
 
+# Python cache
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*$py.class
+
 # vercel
 .vercel
 

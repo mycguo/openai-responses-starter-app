@@ -40,14 +40,8 @@ The script will:
 ### 1. Install Dependencies
 
 ```bash
-# Install backend dependencies
-cd backend
+# Install all dependencies (backend + frontend)
 pip install -r requirements.txt
-
-# Install frontend dependencies
-cd ../frontend
-pip install -r requirements.txt
-cd ..
 ```
 
 ### 2. Set API Keys

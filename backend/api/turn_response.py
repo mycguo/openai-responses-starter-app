@@ -28,9 +28,23 @@ async def generate_stream(messages: List[Dict[str, Any]], tools_state: Dict[str,
         raise ValueError("OPENAI_API_KEY not found in secrets or environment variables")
     openai_client = OpenAI(api_key=api_key)
     
+    # Debug: Check if responses attribute exists
+    import openai
+    print(f"OpenAI SDK version: {openai.__version__}")
+    print(f"Client has 'responses' attribute: {hasattr(openai_client, 'responses')}")
+    if hasattr(openai_client, 'responses'):
+        print(f"Responses type: {type(openai_client.responses)}")
+    else:
+        print(f"Available client attributes: {[a for a in dir(openai_client) if not a.startswith('_')][:10]}")
+    
     try:
-        # OpenAI Python SDK uses sync streaming, but we can wrap it in async
-        import asyncio
+        # OpenAI Responses API - accessed directly (same as TypeScript SDK)
+        if not hasattr(openai_client, 'responses'):
+            raise AttributeError(
+                f"OpenAI client does not have 'responses' attribute. "
+                f"SDK version: {openai.__version__}. "
+                f"Please upgrade: pip install --upgrade openai"
+            )
         events = openai_client.responses.create(
             model=MODEL,
             input=messages,
