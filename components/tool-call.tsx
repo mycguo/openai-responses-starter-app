@@ -4,6 +4,7 @@ import { ToolCallItem } from "@/lib/assistant";
 import { BookOpenText, Clock, Globe, Zap, Code2, Download } from "lucide-react";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { coy } from "react-syntax-highlighter/dist/esm/styles/prism";
+import { API_BASE_URL } from "@/lib/api-config";
 
 interface ToolCallProps {
   toolCall: ToolCallItem;
@@ -195,7 +196,7 @@ function CodeInterpreterCell({ toolCall }: ToolCallProps) {
             {toolCall.files.map((f) => (
               <a
                 key={f.file_id}
-                href={`/api/container_files/content?file_id=${f.file_id}${
+                href={`${API_BASE_URL}/api/container_files/content?file_id=${f.file_id}${
                   f.container_id ? `&container_id=${f.container_id}` : ""
                 }${
                   f.filename

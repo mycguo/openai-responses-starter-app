@@ -106,7 +106,8 @@ export default function FileUpload({
       };
 
       // 1. Upload file
-      const uploadResponse = await fetch("/api/vector_stores/upload_file", {
+      const { API_BASE_URL } = require("@/lib/api-config");
+      const uploadResponse = await fetch(`${API_BASE_URL}/api/vector_stores/upload_file`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -127,11 +128,11 @@ export default function FileUpload({
 
       // 2. If no vector store is linked, create one
       if (!vectorStoreId || vectorStoreId === "") {
-        const createResponse = await fetch("/api/vector_stores/create_store", {
+        const createResponse = await fetch(`${API_BASE_URL}/api/vector_stores/create_store`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            storeName: newStoreName,
+            name: newStoreName,
           }),
         });
         if (!createResponse.ok) {
@@ -148,7 +149,7 @@ export default function FileUpload({
       onAddStore(finalVectorStoreId);
 
       // 3. Add file to vector store
-      const addFileResponse = await fetch("/api/vector_stores/add_file", {
+      const addFileResponse = await fetch(`${API_BASE_URL}/api/vector_stores/add_file`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

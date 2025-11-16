@@ -7,6 +7,7 @@ import { CircleX } from "lucide-react";
 import { TooltipContent, TooltipTrigger } from "./ui/tooltip";
 import { Tooltip } from "./ui/tooltip";
 import { TooltipProvider } from "./ui/tooltip";
+import { API_BASE_URL } from "@/lib/api-config";
 
 export default function FileSearchSetup() {
   const { vectorStore, setVectorStore } = useToolsStore();
@@ -22,7 +23,7 @@ export default function FileSearchSetup() {
   const handleAddStore = async (storeId: string) => {
     if (storeId.trim()) {
       const newStore = await fetch(
-        `/api/vector_stores/retrieve_store?vector_store_id=${storeId}`
+        `${API_BASE_URL}/api/vector_stores/retrieve_store?vector_store_id=${storeId}`
       ).then((res) => res.json());
       if (newStore.id) {
         console.log("Retrieved store:", newStore);

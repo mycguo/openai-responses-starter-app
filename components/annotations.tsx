@@ -1,4 +1,5 @@
 import { ExternalLinkIcon } from "lucide-react";
+import { API_BASE_URL } from "@/lib/api-config";
 
 export type Annotation = {
   type:
@@ -37,7 +38,7 @@ const AnnotationPill = ({ annotation }: { annotation: Annotation }) => {
     case "container_file_citation":
       return (
         <a
-          href={`/api/container_files/content?file_id=${annotation.fileId}${annotation.containerId ? `&container_id=${annotation.containerId}` : ""}${annotation.filename ? `&filename=${encodeURIComponent(annotation.filename)}` : ""}`}
+          href={`${API_BASE_URL}/api/container_files/content?file_id=${annotation.fileId}${annotation.containerId ? `&container_id=${annotation.containerId}` : ""}${annotation.filename ? `&filename=${encodeURIComponent(annotation.filename)}` : ""}`}
           download
           className={`${className} flex items-center gap-1`}
         >

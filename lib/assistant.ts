@@ -78,8 +78,9 @@ export const handleTurn = async (
 ) => {
   try {
     const { googleIntegrationEnabled } = useToolsStore.getState();
-    // Get response from the API (defined in app/api/turn_response/route.ts)
-    const response = await fetch("/api/turn_response", {
+    // Get response from the API (defined in app/api/turn_response/route.ts or Python backend)
+    const { API_BASE_URL } = require("@/lib/api-config");
+    const response = await fetch(`${API_BASE_URL}/api/turn_response`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

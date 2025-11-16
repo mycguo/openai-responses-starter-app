@@ -7,6 +7,7 @@ import McpConfig from "./mcp-config";
 import PanelConfig from "./panel-config";
 import useToolsStore from "@/stores/useToolsStore";
 import GoogleIntegrationPanel from "@/components/google-integration";
+import { API_BASE_URL } from "@/lib/api-config";
 
 export default function ContextPanel() {
   const {
@@ -26,7 +27,7 @@ export default function ContextPanel() {
   const [oauthConfigured, setOauthConfigured] = React.useState<boolean>(false);
 
   React.useEffect(() => {
-    fetch("/api/google/status")
+    fetch(`${API_BASE_URL}/api/google/status`)
       .then((r) => r.json())
       .then((d) => setOauthConfigured(Boolean(d.oauthConfigured)))
       .catch(() => setOauthConfigured(false));

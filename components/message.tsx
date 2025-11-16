@@ -1,6 +1,7 @@
 import { MessageItem } from "@/lib/assistant";
 import React from "react";
 import ReactMarkdown from "react-markdown";
+import { API_BASE_URL } from "@/lib/api-config";
 
 interface MessageProps {
   message: MessageItem;
@@ -42,7 +43,7 @@ const Message: React.FC<MessageProps> = ({ message }) => {
                     .map((a, i) => (
                       <img
                         key={i}
-                        src={`/api/container_files/content?file_id=${a.fileId}${a.containerId ? `&container_id=${a.containerId}` : ""}${a.filename ? `&filename=${encodeURIComponent(a.filename)}` : ""}`}
+                        src={`${API_BASE_URL}/api/container_files/content?file_id=${a.fileId}${a.containerId ? `&container_id=${a.containerId}` : ""}${a.filename ? `&filename=${encodeURIComponent(a.filename)}` : ""}`}
                         alt={a.filename || ""}
                         className="mt-2 max-w-full"
                       />

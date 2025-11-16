@@ -9,6 +9,7 @@ import {
 } from "./ui/tooltip";
 import useToolsStore from "@/stores/useToolsStore";
 import { Check } from "lucide-react";
+import { API_BASE_URL } from "@/lib/api-config";
 
 export default function GoogleIntegrationPanel() {
   const [connected, setConnected] = useState<boolean>(false);
@@ -18,7 +19,7 @@ export default function GoogleIntegrationPanel() {
   );
 
   useEffect(() => {
-    fetch("/api/google/status")
+    fetch(`${API_BASE_URL}/api/google/status`)
       .then((r) => r.json())
       .then((d) => {
         setConnected(Boolean(d.connected));
@@ -34,12 +35,12 @@ export default function GoogleIntegrationPanel() {
     <div className="space-y-4">
       {!connected ? (
         <div className="space-y-2">
-          {oauthConfigured ? (
-            googleIntegrationEnabled ? (
-              <a href="/api/google/auth">
-                <Button>Connect Google Integration</Button>
-              </a>
-            ) : (
+            {oauthConfigured ? (
+              googleIntegrationEnabled ? (
+                <a href={`${API_BASE_URL}/api/google/auth`}>
+                  <Button>Connect Google Integration</Button>
+                </a>
+              ) : (
               <span className="inline-flex">
                 <Button disabled>Connect Google Integration</Button>
               </span>

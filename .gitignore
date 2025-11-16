@@ -34,6 +34,10 @@ yarn-error.log*
 .env*
 !.env.example
 
+# Streamlit secrets
+.streamlit/secrets.toml
+!.streamlit/secrets.toml.example
+
 # vercel
 .vercel
 
