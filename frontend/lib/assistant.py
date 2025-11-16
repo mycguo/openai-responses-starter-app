@@ -113,6 +113,14 @@ def process_messages_streamlit_realtime(response):
         print(f"Stream ended. Processed {event_count} events.")
         print(f"Final chat_messages count: {len(st.session_state.chat_messages)}")
         
+        # Check if we need to continue after function call
+        if hasattr(st.session_state, 'needs_continuation') and st.session_state.needs_continuation:
+            st.session_state.needs_continuation = False
+            # Trigger another API call
+            from pages.chat import process_messages
+            print("Function call completed, making another API request with tool output...")
+            process_messages()
+        
         # If no events were processed, try alternative parsing
         if event_count == 0:
             print("No events found with standard SSE parsing. Trying alternative...")
@@ -333,6 +341,10 @@ def handle_output_item_added(data):
 
 def handle_output_item_done(data):
     """Handle output item done"""
+    import streamlit as st
+    import requests
+    from utils.config import get_api_base_url
+    
     item = data.get("item", {})
     item_id = item.get("id")
     
@@ -343,14 +355,73 @@ def handle_output_item_done(data):
             
             # Handle function call output
             if msg.get("tool_type") == "function_call":
-                # Execute function (this would need to call the function handler)
-                # For now, we'll just mark it as completed
-                msg["status"] = "completed"
-                msg["output"] = item.get("output")
+                # Execute function and get output
+                function_name = msg.get("name")
+                parsed_args = msg.get("parsedArguments", {})
+                
+                # Call the backend function endpoint
+                try:
+                    API_BASE_URL = get_api_base_url()
+                    if function_name == "get_weather":
+                        location = parsed_args.get("location", "")
+                        unit = parsed_args.get("unit", "celsius")
+                        response = requests.get(
+                            f"{API_BASE_URL}/api/functions/get_weather",
+                            params={"location": location, "unit": unit},
+                            timeout=10
+                        )
+                        if response.ok:
+                            tool_result = response.json()
+                        else:
+                            tool_result = {"error": f"Function call failed: {response.status_code}"}
+                    elif function_name == "get_joke":
+                        response = requests.get(
+                            f"{API_BASE_URL}/api/functions/get_joke",
+                            timeout=10
+                        )
+                        if response.ok:
+                            tool_result = response.json()
+                        else:
+                            tool_result = {"error": f"Function call failed: {response.status_code}"}
+                    else:
+                        tool_result = {"error": f"Unknown function: {function_name}"}
+                    
+                    # Add tool output to conversation
+                    import json
+                    tool_output_item = {
+                        "type": "function_call_output",
+                        "call_id": item.get("call_id"),
+                        "status": "completed",
+                        "output": json.dumps(tool_result),
+                    }
+                    st.session_state.conversation_items.append(tool_output_item)
+                    
+                    # Update message with output
+                    msg["status"] = "completed"
+                    msg["output"] = json.dumps(tool_result)
+                    
+                    # Trigger another API call with the tool output
+                    # This will be handled by checking if we need to continue
+                    st.session_state.needs_continuation = True
+                    
+                except Exception as e:
+                    print(f"Error executing function {function_name}: {e}")
+                    import json
+                    tool_output_item = {
+                        "type": "function_call_output",
+                        "call_id": item.get("call_id"),
+                        "status": "completed",
+                        "output": json.dumps({"error": str(e)}),
+                    }
+                    st.session_state.conversation_items.append(tool_output_item)
+                    msg["status"] = "completed"
+                    msg["output"] = json.dumps({"error": str(e)})
+                    st.session_state.needs_continuation = True
             
             elif msg.get("tool_type") == "mcp_call":
                 msg["status"] = "completed"
                 msg["output"] = item.get("output")
+                # MCP calls already have output from the API
     
     st.session_state.conversation_items.append(item)
 

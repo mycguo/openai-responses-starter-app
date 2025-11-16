@@ -53,6 +53,9 @@ def init_session_state():
             }
         }
     
+    if "needs_continuation" not in st.session_state:
+        st.session_state.needs_continuation = False
+    
     if "mcp_config" not in st.session_state:
         st.session_state.mcp_config = {
             "server_label": "",
