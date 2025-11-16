@@ -1,11 +1,11 @@
 """Chat interface page"""
 import streamlit as st
 from utils.state import get_tools_state
+from utils.config import get_api_base_url
 from config.constants import INITIAL_MESSAGE
 import requests
-import os
 
-API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
+API_BASE_URL = get_api_base_url()
 
 
 def reset_conversation():

@@ -12,4 +12,5 @@ python-multipart==0.0.12
 # Frontend dependencies
 streamlit>=1.28.0
 requests>=2.31.0
+tomli>=2.0.0; python_version < "3.11"  # For reading TOML files in older Python versions
 

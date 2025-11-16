@@ -16,6 +16,11 @@ async def get_google_status(request: Request):
     client_secret = get_google_client_secret()
     oauth_configured = bool(client_id and client_secret)
     
+    print(f"Google OAuth Status Check:")
+    print(f"  client_id present: {bool(client_id)}")
+    print(f"  client_secret present: {bool(client_secret)}")
+    print(f"  oauth_configured: {oauth_configured}")
+    
     return {
         "connected": bool(token_set or access_token),
         "oauthConfigured": oauth_configured,

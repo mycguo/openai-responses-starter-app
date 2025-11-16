@@ -1,10 +1,10 @@
 """Tools panel sidebar"""
 import streamlit as st
 import requests
-import os
 from utils.state import get_tools_state
+from utils.config import get_api_base_url
 
-API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
+API_BASE_URL = get_api_base_url()
 
 
 def render():
