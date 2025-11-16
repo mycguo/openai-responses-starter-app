@@ -41,7 +41,7 @@ hide_streamlit_style = """
 st.markdown(hide_streamlit_style, unsafe_allow_html=True)
 
 # Import after st.set_page_config to ensure Streamlit is initialized
-from pages import chat, tools_panel
+from components import chat, tools_panel
 from utils.state import init_session_state
 
 # Initialize session state (after Streamlit is initialized)

@@ -9,7 +9,7 @@ API_BASE_URL = get_api_base_url()
 
 def render():
     """Render the tools panel"""
-    st.sidebar.title("⚙️ Tools Configuration")
+    # Title hidden - uncomment to show: st.sidebar.title("⚙️ Tools Configuration")
     
     # File Search
     with st.sidebar.expander("📁 File Search", expanded=False):

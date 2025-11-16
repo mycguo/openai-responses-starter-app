@@ -117,7 +117,7 @@ def process_messages_streamlit_realtime(response):
         if hasattr(st.session_state, 'needs_continuation') and st.session_state.needs_continuation:
             st.session_state.needs_continuation = False
             # Trigger another API call
-            from pages.chat import process_messages
+            from components.chat import process_messages
             print("Function call completed, making another API request with tool output...")
             process_messages()
         
